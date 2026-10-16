@@ -1,0 +1,58 @@
+<import src="/templates/common.wxml" />
+<view class="wrap">
+  <view class="card">
+    <view class="card-title">传递函数 G(s)</view>
+    <template is="presets" data="{{presets}}" />
+    <view class="field">
+      <view class="field-label">分子</view>
+      <input class="field-input" value="{{num}}" data-key="num" bindinput="onInput" placeholder="如 4 或 2s+1" />
+    </view>
+    <view class="field">
+      <view class="field-label">分母</view>
+      <input class="field-input" value="{{den}}" data-key="den" bindinput="onInput" placeholder="如 s^2+1.2s+4 或 1 1.2 4" />
+    </view>
+    <view class="field">
+      <view class="field-label">仿真时长</view>
+      <input class="field-input" type="digit" value="{{tEnd}}" data-key="tEnd" bindinput="onInput" placeholder="留空自动选择" />
+      <view class="field-unit">s</view>
+    </view>
+    <view class="seg">
+      <view wx:for="{{types}}" wx:key="key" class="seg-item {{type === item.key ? 'active' : ''}}" data-key="{{item.key}}" bindtap="setType">{{item.name}}响应</view>
+    </view>
+    <button class="btn" bindtap="run">计算</button>
+    <view class="error" wx:if="{{error}}">{{error}}</view>
+  </view>
+
+  <view class="card">
+    <view class="plot-box"><plot id="chart" height="{{260}}" /></view>
+    <view class="hint">点按/拖动曲线查看读数，绿色带为 ±2% 误差带</view>
+  </view>
+
+  <view class="card" wx:if="{{res}}">
+    <template is="tf" data="{{name: 'G(s)', num: res.tf.num, den: res.tf.den}}" />
+    <view class="kv">
+      <view class="kv-k">稳定性</view>
+      <view class="kv-v"><text class="tag {{res.stabilityClass}}">{{res.stability}}</text></view>
+    </view>
+    <view class="kv">
+      <view class="kv-k">极点</view>
+      <view class="kv-v">{{res.poles}}</view>
+    </view>
+    <view class="kv">
+      <view class="kv-k">零点</view>
+      <view class="kv-v">{{res.zeros}}</view>
+    </view>
+    <view class="kv">
+      <view class="kv-k">直流增益 G(0)</view>
+      <view class="kv-v">{{res.dcGain}}</view>
+    </view>
+    <view class="kv">
+      <view class="kv-k">仿真时长</view>
+      <view class="kv-v">{{res.tEnd}} s</view>
+    </view>
+    <view wx:if="{{res.metrics.length}}" style="margin-top: 16rpx;">
+      <template is="metrics" data="{{metrics: res.metrics}}" />
+    </view>
+    <view class="note" wx:for="{{res.notes}}" wx:key="*this">{{item}}</view>
+  </view>
+</view>

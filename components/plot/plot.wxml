@@ -1,0 +1,8 @@
+<canvas
+  type="2d"
+  id="cv"
+  class="cv"
+  style="height: {{height}}px"
+  bindtouchstart="onTouch"
+  bindtouchmove="onTouch"
+></canvas>

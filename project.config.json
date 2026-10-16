@@ -1,0 +1,30 @@
+{
+  "description": "控制工程助手 —— 自动控制原理计算与仿真小程序",
+  "projectname": "control-engineering-miniprogram",
+  "appid": "touristappid",
+  "compileType": "miniprogram",
+  "libVersion": "2.30.4",
+  "packOptions": {
+    "ignore": [
+      { "value": "tests", "type": "folder" },
+      { "value": "tools", "type": "folder" },
+      { "value": "docs", "type": "folder" },
+      { "value": "README.md", "type": "file" },
+      { "value": "package.json", "type": "file" }
+    ],
+    "include": []
+  },
+  "setting": {
+    "es6": true,
+    "enhance": true,
+    "postcss": true,
+    "minified": true,
+    "urlCheck": true,
+    "ignoreUploadUnusedFiles": true
+  },
+  "condition": {},
+  "editorSetting": {
+    "tabIndent": "insertSpaces",
+    "tabSize": 2
+  }
+}

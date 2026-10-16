@@ -1,0 +1,56 @@
+<import src="/templates/common.wxml" />
+<view class="wrap">
+  <view class="card">
+    <view class="card-title">标准二阶系统</view>
+    <template is="tf" data="{{name: 'Φ(s)', num: 'ωn²', den: 's² + 2ζωn·s + ωn²'}}" />
+    <view class="slider-row">
+      <view class="slider-name">ζ</view>
+      <slider min="0" max="200" step="1" value="{{zeta * 100}}" bindchanging="onZeta" bindchange="onZeta" activeColor="#3730a3" block-size="20" />
+      <input class="slider-input" type="digit" value="{{zeta}}" bindconfirm="onZetaInput" bindblur="onZetaInput" />
+    </view>
+    <view class="slider-row">
+      <view class="slider-name">ωn</view>
+      <slider min="1" max="100" step="1" value="{{wn * 10}}" bindchanging="onWn" bindchange="onWn" activeColor="#3730a3" block-size="20" />
+      <input class="slider-input" type="digit" value="{{wn}}" bindconfirm="onWnInput" bindblur="onWnInput" />
+    </view>
+    <view class="field" style="margin-top: 8rpx;">
+      <view class="field-label" style="width: auto; flex: 1;">叠加对比 ζ = 0.1 ~ 2 的曲线</view>
+      <switch checked="{{compare}}" bindchange="onCompare" color="#3730a3" />
+    </view>
+    <view class="error" wx:if="{{error}}">{{error}}</view>
+  </view>
+
+  <view class="card">
+    <view class="plot-box"><plot id="chart" height="{{260}}" /></view>
+  </view>
+
+  <view class="card" wx:if="{{res}}">
+    <template is="tf" data="{{name: 'Φ(s)', num: res.tf.num, den: res.tf.den}}" />
+    <view class="kv">
+      <view class="kv-k">阻尼类型</view>
+      <view class="kv-v"><text class="tag ok">{{res.type}}</text></view>
+    </view>
+    <view class="kv">
+      <view class="kv-k">闭环极点</view>
+      <view class="kv-v">{{res.poles}}</view>
+    </view>
+    <view class="table">
+      <view class="tr th">
+        <view class="td k">指标</view>
+        <view class="td">理论公式</view>
+        <view class="td">仿真结果</view>
+      </view>
+      <view class="tr" wx:for="{{res.rows}}" wx:key="label">
+        <view class="td k">{{item.label}}</view>
+        <view class="td">{{item.theory}}</view>
+        <view class="td">{{item.sim}}</view>
+      </view>
+    </view>
+    <view class="hint" style="margin-top: 12rpx;">欠阻尼公式：σ% = e^(−ζπ/√(1−ζ²))，tp = π/ωd，tr = (π−β)/ωd，ts ≈ 4/(ζωn)（2% 误差带），其中 ωd = ωn√(1−ζ²)，β = arccos ζ</view>
+  </view>
+
+  <view class="card">
+    <view class="plot-box"><plot id="poles" height="{{200}}" /></view>
+    <view class="hint">虚线圆半径为 ωn，阻尼角 β 满足 cos β = ζ</view>
+  </view>
+</view>

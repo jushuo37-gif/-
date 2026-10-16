@@ -1,0 +1,47 @@
+<import src="/templates/common.wxml" />
+<view class="wrap">
+  <view class="card">
+    <view class="card-title">开环传递函数 K·G(s)</view>
+    <template is="presets" data="{{presets}}" />
+    <view class="field">
+      <view class="field-label">分子</view>
+      <input class="field-input" value="{{num}}" data-key="num" bindinput="onInput" />
+    </view>
+    <view class="field">
+      <view class="field-label">分母</view>
+      <input class="field-input" value="{{den}}" data-key="den" bindinput="onInput" />
+    </view>
+    <view class="field">
+      <view class="field-label">K 上限</view>
+      <input class="field-input" type="digit" value="{{kmax}}" data-key="kmax" bindinput="onInput" placeholder="留空自动" />
+    </view>
+    <button class="btn" bindtap="run">绘制根轨迹</button>
+    <view class="error" wx:if="{{error}}">{{error}}</view>
+  </view>
+
+  <view class="card">
+    <view class="plot-box"><plot id="rl" height="{{320}}" /></view>
+    <view class="slider-row" style="margin-top: 12rpx;">
+      <view class="slider-name">K</view>
+      <slider min="0" max="1000" step="1" value="{{kSlider}}" bindchanging="onSlide" bindchange="onSlide" activeColor="#dc2626" block-size="20" />
+      <input class="slider-input" type="digit" value="{{K}}" bindconfirm="onKInput" bindblur="onKInput" />
+    </view>
+    <view class="kv" wx:if="{{atK}}">
+      <view class="kv-k">K = {{atK.K}} 时</view>
+      <view class="kv-v"><text class="tag {{atK.stabilityClass}}">{{atK.stability}}</text></view>
+    </view>
+    <view class="kv" wx:if="{{atK}}">
+      <view class="kv-k">闭环极点</view>
+      <view class="kv-v">{{atK.closedPoles}}</view>
+    </view>
+  </view>
+
+  <view class="card" wx:if="{{res}}">
+    <template is="tf" data="{{name: 'G(s)', num: res.tf.num, den: res.tf.den}}" />
+    <view class="kv" wx:for="{{res.metrics}}" wx:key="label">
+      <view class="kv-k">{{item.label}}</view>
+      <view class="kv-v">{{item.value}}</view>
+    </view>
+    <view class="hint" style="margin-top: 12rpx;">闭环特征方程：D(s) + K·N(s) = 0（K ≥ 0，常规根轨迹）</view>
+  </view>
+</view>

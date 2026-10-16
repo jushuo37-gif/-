@@ -1,0 +1,44 @@
+<import src="/templates/common.wxml" />
+<view class="wrap">
+  <view class="card">
+    <view class="card-title">开环传递函数 G(s)H(s)</view>
+    <template is="presets" data="{{presets}}" />
+    <view class="field">
+      <view class="field-label">分子</view>
+      <input class="field-input" value="{{num}}" data-key="num" bindinput="onInput" />
+    </view>
+    <view class="field">
+      <view class="field-label">分母</view>
+      <input class="field-input" value="{{den}}" data-key="den" bindinput="onInput" />
+    </view>
+    <view class="row">
+      <view class="field">
+        <view class="field-label" style="width: 110rpx;">ω 下限</view>
+        <input class="field-input" type="digit" value="{{wmin}}" data-key="wmin" bindinput="onInput" placeholder="自动" />
+      </view>
+      <view class="field">
+        <view class="field-label" style="width: 110rpx;">ω 上限</view>
+        <input class="field-input" type="digit" value="{{wmax}}" data-key="wmax" bindinput="onInput" placeholder="自动" />
+      </view>
+    </view>
+    <button class="btn" bindtap="run">计算</button>
+    <view class="error" wx:if="{{error}}">{{error}}</view>
+  </view>
+
+  <view class="card" wx:if="{{res}}">
+    <template is="tf" data="{{name: 'G(s)', num: res.tf.num, den: res.tf.den}}" />
+    <template is="metrics" data="{{metrics: res.metrics}}" />
+    <view class="note" wx:for="{{res.notes}}" wx:key="*this">{{item}}</view>
+  </view>
+
+  <view class="card">
+    <view class="plot-box"><plot id="mag" height="{{210}}" /></view>
+    <view class="plot-box"><plot id="phase" height="{{210}}" /></view>
+    <view class="hint">绿色竖线：截止频率 ωc；红色竖线：相位穿越频率 ωg。频率范围 {{res.range}}</view>
+  </view>
+
+  <view class="card">
+    <view class="plot-box"><plot id="nyq" height="{{300}}" /></view>
+    <view class="hint">红色 × 为 (−1, j0) 点，虚线为单位圆</view>
+  </view>
+</view>

@@ -1,0 +1,23 @@
+<view class="wrap">
+  <view class="hero">
+    <view class="hero-title">控制工程助手</view>
+    <view class="hero-sub">自动控制原理 · 计算与仿真</view>
+  </view>
+
+  <view class="tools">
+    <view class="tool" wx:for="{{tools}}" wx:key="url" data-url="{{item.url}}" bindtap="go" hover-class="tool-hover">
+      <view class="tool-icon">{{item.icon}}</view>
+      <view class="tool-body">
+        <view class="tool-title">{{item.title}}</view>
+        <view class="tool-desc">{{item.desc}}</view>
+      </view>
+      <view class="tool-arrow">›</view>
+    </view>
+  </view>
+
+  <view class="card">
+    <view class="card-title">输入说明</view>
+    <view class="hint">多项式可直接写系数（降幂，空格或逗号分隔），如 “1 3 2”；也可写关于 s 的表达式，如 “s^2+3s+2”、“(s+1)(s+2)”、“10(0.5s+1)”、“s(s+1)^2”。</view>
+    <view class="hint" style="margin-top: 12rpx;">图表上点按或拖动可查看曲线读数。</view>
+  </view>
+</view>

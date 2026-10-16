@@ -1,0 +1,31 @@
+<!-- 传递函数分式显示：data="{{name: 'G(s)', num: '...', den: '...'}}" -->
+<template name="tf">
+  <view class="tf">
+    <view class="tf-line">
+      <view class="tf-name">{{name}} =</view>
+      <view class="tf-frac">
+        <view class="tf-num">{{num}}</view>
+        <view class="tf-den">{{den}}</view>
+      </view>
+    </view>
+  </view>
+</template>
+
+<!-- 指标网格：data="{{metrics}}" -->
+<template name="metrics">
+  <view class="grid">
+    <view class="grid-item" wx:for="{{metrics}}" wx:key="label">
+      <view class="grid-box">
+        <view class="grid-label">{{item.label}}</view>
+        <view class="grid-value">{{item.value}}</view>
+      </view>
+    </view>
+  </view>
+</template>
+
+<!-- 预设按钮：data="{{presets}}"，点击触发 applyPreset -->
+<template name="presets">
+  <view class="chips">
+    <view class="chip" wx:for="{{presets}}" wx:key="name" data-index="{{index}}" bindtap="applyPreset">{{item.name}}</view>
+  </view>
+</template>

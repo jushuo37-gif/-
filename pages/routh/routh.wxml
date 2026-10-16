@@ -1,0 +1,44 @@
+<import src="/templates/common.wxml" />
+<view class="wrap">
+  <view class="card">
+    <view class="card-title">闭环特征多项式 D(s)</view>
+    <template is="presets" data="{{presets}}" />
+    <view class="field">
+      <view class="field-label">D(s)</view>
+      <input class="field-input" value="{{poly}}" data-key="poly" bindinput="onInput" bindconfirm="run" placeholder="如 s^3+6s^2+11s+6 或 1 6 11 6" />
+    </view>
+    <button class="btn" bindtap="run">列劳斯表</button>
+    <view class="error" wx:if="{{error}}">{{error}}</view>
+  </view>
+
+  <view class="card" wx:if="{{res}}">
+    <view class="poly">D(s) = {{res.polyText}}</view>
+    <scroll-view scroll-x class="table-scroll">
+      <view class="rtable">
+        <view class="rrow" wx:for="{{res.rows}}" wx:key="label">
+          <view class="rlabel">{{item.label}}</view>
+          <view class="rcell {{ci === 0 ? 'first' : ''}} {{ci === 0 && item.neg ? 'neg' : ''}}" wx:for="{{item.cells}}" wx:for-item="c" wx:for-index="ci">{{c}}</view>
+          <view class="rflag" wx:if="{{item.flag}}">{{item.flag}}</view>
+        </view>
+      </view>
+    </scroll-view>
+    <view class="verdict">
+      <text class="tag {{res.verdictClass}}">{{res.verdict}}</text>
+      <text class="verdict-text">{{res.conclusion}}</text>
+    </view>
+    <view class="note" wx:for="{{res.notes}}" wx:key="*this">{{item}}</view>
+    <view class="kv" wx:for="{{res.aux}}" wx:key="poly">
+      <view class="kv-k">辅助多项式</view>
+      <view class="kv-v">A(s) = {{item.poly}}，根：{{item.roots}}</view>
+    </view>
+    <view class="kv">
+      <view class="kv-k">数值求根校核</view>
+      <view class="kv-v">{{res.roots}}</view>
+    </view>
+  </view>
+
+  <view class="card">
+    <view class="card-title">提示</view>
+    <view class="hint">劳斯表第一列元素符号改变的次数等于特征方程右半平面根的个数。若某行首元素为 0，以小正数 ε 代替；若某行全为 0，用上一行构成的辅助多项式求导后的系数代替，辅助多项式的根即关于原点对称的根。</view>
+  </view>
+</view>

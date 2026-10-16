@@ -1,0 +1,24 @@
+{
+  "pages": [
+    "pages/index/index",
+    "pages/tf/tf",
+    "pages/second/second",
+    "pages/pid/pid",
+    "pages/bode/bode",
+    "pages/rlocus/rlocus",
+    "pages/routh/routh"
+  ],
+  "window": {
+    "navigationBarBackgroundColor": "#1e3a8a",
+    "navigationBarTextStyle": "white",
+    "navigationBarTitleText": "控制工程助手",
+    "backgroundColor": "#f3f4f6",
+    "backgroundTextStyle": "dark"
+  },
+  "usingComponents": {
+    "plot": "/components/plot/plot"
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json",
+  "lazyCodeLoading": "requiredComponents"
+}

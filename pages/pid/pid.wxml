@@ -1,0 +1,58 @@
+<import src="/templates/common.wxml" />
+<view class="wrap">
+  <view class="card">
+    <view class="card-title">被控对象 G(s)</view>
+    <template is="presets" data="{{presets}}" />
+    <view class="field">
+      <view class="field-label">分子</view>
+      <input class="field-input" value="{{num}}" data-key="num" bindinput="onInput" />
+    </view>
+    <view class="field">
+      <view class="field-label">分母</view>
+      <input class="field-input" value="{{den}}" data-key="den" bindinput="onInput" />
+    </view>
+    <view class="row">
+      <view class="field">
+        <view class="field-label" style="width: 110rpx;">时长</view>
+        <input class="field-input" type="digit" value="{{tEnd}}" data-key="tEnd" bindinput="onInput" placeholder="自动" />
+      </view>
+      <view class="field">
+        <view class="field-label" style="width: 110rpx;">滤波 N</view>
+        <input class="field-input" type="digit" value="{{N}}" data-key="N" bindinput="onInput" />
+      </view>
+    </view>
+    <button class="btn" bindtap="reset">应用对象并仿真</button>
+    <view class="error" wx:if="{{error}}">{{error}}</view>
+  </view>
+
+  <view class="card">
+    <view class="card-title">PID 参数</view>
+    <view class="hint" style="margin-bottom: 12rpx;">C(s) = Kp + Ki/s + Kd·N·s/(s+N)，单位负反馈</view>
+    <view class="slider-row" wx:for="{{gains}}" wx:key="key">
+      <view class="slider-name">{{item.key}}</view>
+      <slider min="0" max="200" step="1" value="{{item.value / item.max * 200}}" data-index="{{index}}" bindchanging="onSlide" bindchange="onSlide" activeColor="#3730a3" block-size="20" />
+      <input class="slider-input" type="digit" value="{{item.value}}" data-index="{{index}}" bindconfirm="onGainInput" bindblur="onGainInput" />
+    </view>
+  </view>
+
+  <view class="card">
+    <view class="plot-box"><plot id="cy" height="{{240}}" /></view>
+    <view class="plot-box"><plot id="cu" height="{{170}}" /></view>
+  </view>
+
+  <view class="card" wx:if="{{res}}">
+    <view class="kv">
+      <view class="kv-k">闭环稳定性</view>
+      <view class="kv-v"><text class="tag {{res.stabilityClass}}">{{res.stability}}</text></view>
+    </view>
+    <view class="kv">
+      <view class="kv-k">闭环极点</view>
+      <view class="kv-v">{{res.closedPoles}}</view>
+    </view>
+    <view wx:if="{{res.metrics.length}}" style="margin-top: 16rpx;">
+      <template is="metrics" data="{{metrics: res.metrics}}" />
+    </view>
+    <template is="tf" data="{{name: 'C(s)', num: res.controller.num, den: res.controller.den}}" />
+    <template is="tf" data="{{name: 'Φ(s)', num: res.closedLoop.num, den: res.closedLoop.den}}" />
+  </view>
+</view>

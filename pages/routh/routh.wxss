@@ -1,0 +1,69 @@
+.poly {
+  font-family: 'Times New Roman', serif;
+  font-size: 30rpx;
+  margin-bottom: 16rpx;
+  word-break: break-all;
+}
+
+.table-scroll {
+  width: 100%;
+  white-space: nowrap;
+}
+
+.rtable {
+  display: inline-block;
+  min-width: 100%;
+  border: 1rpx solid #e5e7eb;
+  border-radius: 10rpx;
+}
+
+.rrow {
+  display: flex;
+  align-items: center;
+  border-bottom: 1rpx solid #e5e7eb;
+}
+
+.rrow:last-child {
+  border-bottom: none;
+}
+
+.rlabel {
+  width: 90rpx;
+  flex-shrink: 0;
+  padding: 12rpx;
+  background: #f3f4f6;
+  font-style: italic;
+  font-family: 'Times New Roman', serif;
+}
+
+.rcell {
+  min-width: 140rpx;
+  padding: 12rpx;
+  text-align: center;
+  font-size: 26rpx;
+}
+
+.rcell.first {
+  background: #eef2ff;
+  font-weight: 600;
+}
+
+.rcell.neg {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.rflag {
+  margin-left: auto;
+  padding: 0 12rpx;
+  font-size: 22rpx;
+  color: #a16207;
+}
+
+.verdict {
+  margin-top: 20rpx;
+}
+
+.verdict-text {
+  margin-left: 12rpx;
+}
