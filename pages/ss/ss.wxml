@@ -1,0 +1,123 @@
+<import src="/templates/common.wxml" />
+
+<!-- 矩阵显示：data="{{rows}}" -->
+<template name="matrix">
+  <scroll-view scroll-x class="mat-scroll">
+    <view class="mat">
+      <view class="mat-row" wx:for="{{rows}}" wx:for-item="row" wx:key="index">
+        <view class="mat-cell" wx:for="{{row}}" wx:for-item="v" wx:key="index">{{v}}</view>
+      </view>
+    </view>
+  </scroll-view>
+</template>
+
+<view class="wrap">
+  <view class="card">
+    <view class="card-title">ẋ = Ax + Bu，y = Cx + Du</view>
+    <template is="presets" data="{{presets}}" />
+    <view class="field">
+      <view class="field-label">A</view>
+      <input class="field-input" value="{{A}}" data-key="A" bindinput="onInput" placeholder="行用 ; 分隔，如 0 1; -2 -3" />
+    </view>
+    <view class="field">
+      <view class="field-label">B</view>
+      <input class="field-input" value="{{B}}" data-key="B" bindinput="onInput" placeholder="列向量，如 0; 1" />
+    </view>
+    <view class="row">
+      <view class="field">
+        <view class="field-label" style="width: 60rpx;">C</view>
+        <input class="field-input" value="{{C}}" data-key="C" bindinput="onInput" placeholder="如 1 0" />
+      </view>
+      <view class="field" style="flex: 0 0 200rpx;">
+        <view class="field-label" style="width: 60rpx;">D</view>
+        <input class="field-input" type="digit" value="{{D}}" data-key="D" bindinput="onInput" />
+      </view>
+    </view>
+    <view class="field">
+      <view class="field-label" style="width: 200rpx;">期望闭环极点</view>
+      <input class="field-input" value="{{poles}}" data-key="poles" bindinput="onInput" placeholder="如 -2±2j, -10（可留空）" />
+    </view>
+    <view class="field">
+      <view class="field-label" style="width: 200rpx;">观测器极点</view>
+      <input class="field-input" value="{{obs}}" data-key="obs" bindinput="onInput" placeholder="可留空" />
+    </view>
+    <view class="row">
+      <view class="field">
+        <view class="field-label" style="width: 90rpx;">x(0)</view>
+        <input class="field-input" value="{{x0}}" data-key="x0" bindinput="onInput" placeholder="默认 0" />
+      </view>
+      <view class="field">
+        <view class="field-label" style="width: 90rpx;">时长</view>
+        <input class="field-input" type="digit" value="{{tEnd}}" data-key="tEnd" bindinput="onInput" placeholder="自动" />
+      </view>
+    </view>
+    <button class="btn" bindtap="run">分析与设计</button>
+    <view class="error" wx:if="{{error}}">{{error}}</view>
+  </view>
+
+  <view class="card" wx:if="{{res}}">
+    <view class="card-title">系统分析（n = {{res.n}}）</view>
+    <view class="kv">
+      <view class="kv-k">特征值</view>
+      <view class="kv-v">{{res.eigs}}</view>
+    </view>
+    <view class="kv">
+      <view class="kv-k">稳定性</view>
+      <view class="kv-v"><text class="tag {{res.stabilityClass}}">{{res.stability}}</text></view>
+    </view>
+    <view class="kv">
+      <view class="kv-k">特征多项式</view>
+      <view class="kv-v">{{res.charPoly}}</view>
+    </view>
+    <template is="tf" data="{{name: 'G(s)', num: res.tf.num, den: res.tf.den}}" />
+    <block wx:if="{{res.tfMin}}">
+      <template is="tf" data="{{name: '最小实现', num: res.tfMin.num, den: res.tfMin.den}}" />
+    </block>
+
+    <view class="sub-title">
+      能控性矩阵 Qc = [B AB … A^(n−1)B]
+      <text class="tag {{res.ctrb.ok ? 'ok' : 'bad'}}">rank = {{res.ctrb.rank}}，{{res.ctrb.ok ? '完全能控' : '不完全能控'}}</text>
+    </view>
+    <template is="matrix" data="{{rows: res.ctrb.rows}}" />
+    <view class="sub-title">
+      能观性矩阵 Qo = [C; CA; …; CA^(n−1)]
+      <text class="tag {{res.obsv.ok ? 'ok' : 'bad'}}">rank = {{res.obsv.rank}}，{{res.obsv.ok ? '完全能观' : '不完全能观'}}</text>
+    </view>
+    <template is="matrix" data="{{rows: res.obsv.rows}}" />
+    <view class="note" wx:for="{{res.notes}}" wx:key="*this">{{item}}</view>
+  </view>
+
+  <view class="card" wx:if="{{res && (res.K || res.L)}}">
+    <view class="card-title">设计结果（Ackermann 公式）</view>
+    <block wx:if="{{res.K}}">
+      <view class="kv">
+        <view class="kv-k">反馈增益 K</view>
+        <view class="kv-v mono">{{res.K}}</view>
+      </view>
+      <view class="kv">
+        <view class="kv-k">前馈增益 Nr</view>
+        <view class="kv-v mono">{{res.Nr}}</view>
+      </view>
+      <view class="kv">
+        <view class="kv-k">A − BK 特征值</view>
+        <view class="kv-v">{{res.clPoles}}</view>
+      </view>
+    </block>
+    <block wx:if="{{res.L}}">
+      <view class="kv">
+        <view class="kv-k">观测器增益 L</view>
+        <view class="kv-v mono">{{res.L}}ᵀ</view>
+      </view>
+      <view class="kv">
+        <view class="kv-k">A − LC 特征值</view>
+        <view class="kv-v">{{res.obsPoles}}</view>
+      </view>
+    </block>
+    <view class="hint" style="margin-top: 12rpx;">K = [0 … 0 1]·Qc⁻¹·φ(A)，L = φo(A)·Qo⁻¹·[0 … 0 1]ᵀ；控制律 u = −Kx̂ + Nr·r，观测器 x̂′ = Ax̂ + Bu + L(y − ŷ)，按分离原理分别设计</view>
+  </view>
+
+  <view class="card">
+    <view class="plot-box"><plot id="cy" height="{{240}}" /></view>
+    <view class="plot-box" wx:if="{{res && res.L}}"><plot id="ce" height="{{200}}" /></view>
+  </view>
+</view>

@@ -6,6 +6,8 @@ const ctl = require('../utils/control')
 const { routh } = require('../utils/routh')
 const { rootLocus } = require('../utils/rlocus')
 const F = require('../utils/format')
+const D = require('../utils/design')
+const S = require('../utils/ss')
 
 let passed = 0
 let failed = 0
@@ -213,6 +215,113 @@ test('分支连续（无跳变）', () => {
       assert.ok(d < 0.1 * Math.max(rl.R, Math.hypot(b[i - 1].re, b[i - 1].im)) + 1e-9, '跳变 ' + d)
     }
   })
+})
+
+console.log('校正设计')
+const marginsOf = G => ctl.margins(G, ctl.bode(G, null, null, 2000))
+const designCase = (num, den, K, opts) => {
+  const r = D.design(ctl.makeTF(P.scale(num, K), den), opts)
+  return { r, mg: r.Lc ? marginsOf(r.Lc) : null }
+}
+test('超前：10/(s(s+1))，γ ≥ 45°', () => {
+  const { r, mg } = designCase([1], [1, 1, 0], 10, { pm: 45 })
+  assert.strictEqual(r.method, 'lead')
+  near(mg.pm.pm, 45, 0.05)
+  near(mg.pm.w, r.lead.wc, 1e-3 * r.lead.wc, 'ωc = ωm')
+  // 超前环节在 ωm 处的相角等于 φm，幅值等于 √a
+  const g = ctl.freqResp(r.Gc, r.lead.wc)
+  near(Math.atan2(g.im, g.re) * 180 / Math.PI, r.lead.phim, 1e-9)
+  near(Math.hypot(g.re, g.im), Math.sqrt(r.lead.a), 1e-9)
+})
+test('滞后：5/(s(s+1)(0.5s+1))，γ ≥ 40°（超前不可行时自动改用滞后）', () => {
+  const { r, mg } = designCase([1], P.mul([1, 1, 0], [0.5, 1]), 5, { pm: 40 })
+  assert.strictEqual(r.method, 'lag')
+  assert.ok(!r.tried[0].ok)
+  near(mg.pm.pm, 40, 0.05)
+  assert.ok(r.lag.b < 1 && r.lag.b > 0)
+  near(r.lag.wz, r.lag.wc / D.LAG_RATIO, 1e-12)
+  near(ctl.dcGain(r.Gc), 1, 1e-12, '滞后校正不改变静态增益')
+})
+test('滞后-超前：20/(s(s+1)(s+2))，γ ≥ 50°，ωc 取 ωg = √2', () => {
+  const { r, mg } = designCase([1], P.mul([1, 1, 0], [1, 2]), 20, { pm: 50, method: 'laglead' })
+  assert.strictEqual(r.method, 'laglead')
+  near(r.wc, Math.SQRT2, 1e-6)
+  near(mg.pm.pm, 50, 0.05)
+  near(mg.pm.w, Math.SQRT2, 1e-4)
+  assert.strictEqual(ctl.stability(ctl.poles(ctl.feedback(r.Lc))), 'stable')
+})
+test('Ⅱ 型对象无相位穿越时滞后-超前仍可设计', () => {
+  const { r, mg } = designCase([1], P.mul([1, 0, 0], [0.1, 1]), 10, { pm: 35 })
+  assert.strictEqual(r.method, 'laglead')
+  near(mg.pm.pm, 35, 0.05)
+})
+test('指定 ωc', () => {
+  const { r, mg } = designCase([1], P.mul([1, 0], P.mul([0.1, 1], [0.001, 1])), 1000, { pm: 45, wc: 165 })
+  assert.ok(r.ok)
+  near(mg.pm.w, 165, 0.05)
+  assert.ok(mg.pm.pm >= 44.5)
+})
+test('已满足要求时无需校正', () => {
+  const { r } = designCase([1], [1, 1, 0], 1, { pm: 45 })
+  assert.strictEqual(r.method, 'none')
+})
+test('误差系数与型别', () => {
+  const tg = D.typeAndGain(ctl.makeTF([2], P.mul([1, 0, 0], [1, 4])))
+  assert.strictEqual(tg.nu, 2)
+  near(tg.k0, 0.5, 1e-12)
+})
+
+console.log('状态空间')
+const pendA = [[0, 1, 0, 0], [20.601, 0, 0, 0], [0, 0, 0, 1], [-0.4905, 0, 0, 0]]
+const pendB = [0, -1, 0, 0.5]
+const eigOf = M => S.eig(M).sort((a, b) => a.re - b.re || a.im - b.im)
+test('矩阵与极点解析', () => {
+  assert.deepStrictEqual(S.parseMatrix('0 1; -2 -3', 'A'), [[0, 1], [-2, -3]])
+  assert.deepStrictEqual(S.parseMatrix('0，1\n-2，-3', 'A'), [[0, 1], [-2, -3]])
+  assert.deepStrictEqual(S.parseVector('0; 1', 'B', 2), [0, 1])
+  assert.deepStrictEqual(S.parsePoles('-1±2j, -3', 'p', 3), [{ re: -1, im: 2 }, { re: -1, im: -2 }, { re: -3, im: 0 }])
+  assert.strictEqual(S.parsePoles('-1 + j2', 'p', 2)[1].im, -2, '共轭自动补全')
+  assert.throws(() => S.parsePoles('-1, -2', 'p', 3))
+  assert.throws(() => S.parseMatrix('1 2; 3', 'A'))
+})
+test('传递函数（Faddeev–LeVerrier）', () => {
+  const tf = S.ssToTF({ A: [[0, 1, 0], [0, 0, 1], [-6, -11, -6]], B: [0, 0, 1], C: [10, 1, 0], D: 2 })
+  assert.deepStrictEqual(tf.den, [1, 6, 11, 6])
+  ;[2, 12, 23, 22].forEach((v, i) => near(tf.num[i], v, 1e-9))
+})
+test('能控/能观秩判据与 PBH', () => {
+  const A = [[-1, 0], [0, -2]]
+  assert.strictEqual(S.rank(S.ctrbMatrix(A, [1, 0])), 1)
+  assert.strictEqual(S.rank(S.obsvMatrix(A, [1, 1])), 2)
+  const m = S.pbh(A, [1, 0], [1, 1], S.eig(A))
+  assert.strictEqual(m.uncontrollable.length, 1)
+  near(m.uncontrollable[0].re, -2, 1e-12)
+  assert.strictEqual(m.unobservable.length, 0)
+  assert.strictEqual(S.rank(S.ctrbMatrix(pendA, pendB)), 4)
+})
+test('Ackermann：倒立摆（Ogata 例题 K = [−298.15, −60.70, −163.09, −73.39]）', () => {
+  const ps = S.parsePoles('-2±3.464j, -10, -10', 'p', 4)
+  const K = S.acker(pendA, pendB, ps)
+  ;[-298.15, -60.697, -163.09, -73.393].forEach((v, i) => near(K[i], v, 0.01))
+  const Acl = pendA.map((r, i) => r.map((v, j) => v - pendB[i] * K[j]))
+  const e = eigOf(Acl)
+  near(e[0].re, -10, 1e-5)
+  near(e[3].re, -2, 1e-9)
+  near(Math.abs(e[3].im), 3.464, 1e-9)
+})
+test('观测器极点', () => {
+  const A = [[0, 1, 0], [0, 0, 1], [-6, -11, -6]]
+  const Cv = [1, 0, 0]
+  const Lg = S.observerGain(A, Cv, [-15, -16, -17].map(v => ({ re: v, im: 0 })))
+  const e = eigOf(A.map((r, i) => r.map((v, j) => v - Lg[i] * Cv[j])))
+  ;[-17, -16, -15].forEach((v, i) => near(e[i].re, v, 1e-6))
+})
+test('状态空间仿真与传递函数仿真一致', () => {
+  const sys = { A: [[0, 1], [-4, -1.2]], B: [0, 4], C: [1, 0], D: 0 }
+  const u = new Array(501).fill(1)
+  const y1 = S.simulate(sys, u, 0.02).y
+  const y2 = ctl.step(ctl.makeTF([4], [1, 1.2, 4]), 10, 501).y
+  y1.forEach((v, i) => near(v, y2[i], 1e-9))
 })
 
 console.log('格式化')

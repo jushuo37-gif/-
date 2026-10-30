@@ -196,6 +196,38 @@ const sleep = ms => new Promise(r => setTimeout(r, ms))
     assert.ok(pg.data.error)
   })
 
+  run('pages/design/design', pg => {
+    assert.ok(pg.data.res && pg.data.res.ok, '默认超前设计应满足要求')
+    pg.data.presets.forEach((_, i) => {
+      pg.applyPreset(ev({ index: i }))
+      assert.ok(!pg.data.error, pg.data.error)
+      assert.ok(pg.data.res.ok, pg.data.presets[i].name + ' 未满足要求')
+    })
+    pg.data.methods.forEach(m => {
+      pg.setMethod(ev({ key: m.key }))
+      assert.ok(pg.data.error || pg.data.res, m.key)
+    })
+    pg.onInput(ev({ key: 'pm' }, '95'))
+    pg.run()
+    assert.ok(pg.data.error, 'γ ≥ 90° 应提示错误')
+  })
+  run('pages/ss/ss', pg => {
+    assert.ok(pg.data.res && pg.data.res.K && pg.data.res.L)
+    pg.data.presets.forEach((_, i) => {
+      pg.applyPreset(ev({ index: i }))
+      assert.ok(!pg.data.error, pg.data.error)
+    })
+    pg.onInput(ev({ key: 'A' }, '1 2; 3'))
+    pg.run()
+    assert.ok(pg.data.error, '非方阵应提示错误')
+    pg.onInput(ev({ key: 'A' }, '0 1; -2 -3'))
+    pg.onInput(ev({ key: 'B' }, '0; 1'))
+    pg.onInput(ev({ key: 'C' }, '1 0'))
+    pg.onInput(ev({ key: 'poles' }, '-1, -2, -3'))
+    pg.run()
+    assert.ok(/2 个/.test(pg.data.error), '极点个数不符应提示')
+  })
+
   await sleep(150) // 等节流定时器
   check('图表均已绘制', () => assert.ok(plots.length > 50))
   console.log(failed ? `\n${failed} 项失败` : '\n全部通过')

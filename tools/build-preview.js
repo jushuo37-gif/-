@@ -73,6 +73,16 @@ V.RL_PRESETS.forEach(p => {
   const a = V.analyzeRlocus(p); const k = V.rlocusAtK(a.G, a.rl, p.K);
   add('根轨迹 ' + p.name, k.chart, fmtM(a.metrics) + '\\nK=' + p.K + ' 闭环极点：' + k.closedPoles, 360, 320);
 });
+V.DESIGN_PRESETS.forEach(p => {
+  const r = V.analyzeDesign(p);
+  const info = r.method + '  K = ' + r.K + '\\nGc = ' + r.gc.num + ' / ' + r.gc.den + '\\n' + r.steps.join('\\n') + '\\n' + r.rows.map(x => x.label + '：' + x.a + ' → ' + x.b).join('\\n');
+  add('校正 幅频 ' + p.name, r.chartMag, info, 360, 230); add('校正 相频 ' + p.name, r.chartPhase, '', 360, 210); add('校正 阶跃 ' + p.name, r.chartStep, '', 360, 240);
+});
+V.SS_PRESETS.forEach(p => {
+  const r = V.analyzeSS(p);
+  const info = '特征值：' + r.eigs + '\\nrank Qc = ' + r.ctrb.rank + '，rank Qo = ' + r.obsv.rank + (r.K ? '\\nK = ' + r.K + '\\nNr = ' + r.Nr : '') + (r.L ? '\\nL = ' + r.L : '') + (r.notes.length ? '\\n' + r.notes.join('\\n') : '');
+  add('状态空间 ' + p.name, r.chartY, info, 360, 240); if (r.chartE) add('估计误差 ' + p.name, r.chartE, '', 360, 200);
+});
 document.title = 'ready';
 </script></body></html>`
 fs.writeFileSync(out, html)

@@ -1,0 +1,83 @@
+<import src="/templates/common.wxml" />
+<view class="wrap">
+  <view class="card">
+    <view class="card-title">被控对象 G0(s)（不含待定增益 K）</view>
+    <template is="presets" data="{{presets}}" />
+    <view class="field">
+      <view class="field-label">分子</view>
+      <input class="field-input" value="{{num}}" data-key="num" bindinput="onInput" />
+    </view>
+    <view class="field">
+      <view class="field-label">分母</view>
+      <input class="field-input" value="{{den}}" data-key="den" bindinput="onInput" />
+    </view>
+    <view class="field">
+      <view class="field-label" style="width: 220rpx;">误差系数 Kp/Kv/Ka</view>
+      <input class="field-input" type="digit" value="{{ec}}" data-key="ec" bindinput="onInput" placeholder="留空取 K = 1" />
+    </view>
+    <view class="row">
+      <view class="field">
+        <view class="field-label" style="width: 110rpx;">γ* ≥</view>
+        <input class="field-input" type="digit" value="{{pm}}" data-key="pm" bindinput="onInput" />
+        <view class="field-unit">°</view>
+      </view>
+      <view class="field">
+        <view class="field-label" style="width: 110rpx;">ωc</view>
+        <input class="field-input" type="digit" value="{{wc}}" data-key="wc" bindinput="onInput" placeholder="可选" />
+      </view>
+    </view>
+    <view class="seg">
+      <view wx:for="{{methods}}" wx:key="key" class="seg-item {{method === item.key ? 'active' : ''}}" data-key="{{item.key}}" bindtap="setMethod">{{item.name}}</view>
+    </view>
+    <button class="btn" bindtap="run">设计</button>
+    <view class="error" wx:if="{{error}}">{{error}}</view>
+  </view>
+
+  <view class="card" wx:if="{{res}}">
+    <view class="kv">
+      <view class="kv-k">校正方式</view>
+      <view class="kv-v"><text class="tag {{res.ok ? 'ok' : 'bad'}}">{{res.method}}</text></view>
+    </view>
+    <view class="kv">
+      <view class="kv-k">开环增益 K</view>
+      <view class="kv-v">{{res.K}}</view>
+    </view>
+    <template is="tf" data="{{name: 'Gc(s)', num: res.gc.num, den: res.gc.den}}" />
+    <template is="tf" data="{{name: 'K·G0·Gc', num: res.open.num, den: res.open.den}}" />
+  </view>
+
+  <view class="card" wx:if="{{res}}">
+    <view class="card-title">设计步骤</view>
+    <view class="step" wx:for="{{res.steps}}" wx:key="*this">
+      <view class="step-no">{{index + 1}}</view>
+      <view class="step-text">{{item}}</view>
+    </view>
+    <view class="note" wx:for="{{res.notes}}" wx:key="*this">{{item}}</view>
+  </view>
+
+  <view class="card" wx:if="{{res}}">
+    <view class="card-title">校正前后对比</view>
+    <view class="table">
+      <view class="tr th">
+        <view class="td k">指标</view>
+        <view class="td">校正前</view>
+        <view class="td">校正后</view>
+      </view>
+      <view class="tr" wx:for="{{res.rows}}" wx:key="label">
+        <view class="td k">{{item.label}}</view>
+        <view class="td">{{item.a}}</view>
+        <view class="td strong">{{item.b}}</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="card">
+    <view class="plot-box"><plot id="mag" height="{{230}}" /></view>
+    <view class="plot-box"><plot id="phase" height="{{210}}" /></view>
+    <view class="hint">灰色虚线：校正前；橙色：校正装置 Gc；蓝色：校正后。竖线为校正前后的截止频率，绿色虚线为 −180° + γ*</view>
+  </view>
+
+  <view class="card">
+    <view class="plot-box"><plot id="step" height="{{240}}" /></view>
+  </view>
+</view>
