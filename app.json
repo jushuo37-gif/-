@@ -6,7 +6,9 @@
     "pages/pid/pid",
     "pages/bode/bode",
     "pages/rlocus/rlocus",
-    "pages/routh/routh"
+    "pages/routh/routh",
+    "pages/design/design",
+    "pages/ss/ss"
   ],
   "window": {
     "navigationBarBackgroundColor": "#1e3a8a",

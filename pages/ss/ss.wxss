@@ -1,0 +1,40 @@
+.sub-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12rpx;
+  margin: 24rpx 0 12rpx;
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #374151;
+}
+
+.mat-scroll {
+  width: 100%;
+  white-space: nowrap;
+}
+
+.mat {
+  display: inline-block;
+  padding: 8rpx 16rpx;
+  border-left: 3rpx solid #6b7280;
+  border-right: 3rpx solid #6b7280;
+  border-radius: 12rpx;
+}
+
+.mat-row {
+  display: flex;
+}
+
+.mat-cell {
+  min-width: 120rpx;
+  padding: 6rpx 10rpx;
+  text-align: right;
+  font-family: Menlo, Consolas, monospace;
+  font-size: 24rpx;
+}
+
+.mono {
+  font-family: Menlo, Consolas, monospace;
+  word-break: break-all;
+}

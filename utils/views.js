@@ -7,6 +7,8 @@ const { parsePoly } = require('./parse')
 const { routh } = require('./routh')
 const RL = require('./rlocus')
 const F = require('./format')
+const D = require('./design')
+const S = require('./ss')
 
 const STAB_TEXT = { stable: '稳定', marginal: '临界稳定', unstable: '不稳定' }
 const STAB_CLASS = { stable: 'ok', marginal: 'warn', unstable: 'bad' }
@@ -587,6 +589,374 @@ function cross100(r) {
   return NaN
 }
 
+// ---------------- 校正设计 ----------------
+
+const DESIGN_PRESETS = [
+  { name: '超前 Kv=10 γ≥45°', num: '1', den: 's(s+1)', ec: '10', pm: '45', wc: '', method: 'auto' },
+  { name: '滞后 Kv=5 γ≥40°', num: '1', den: 's(s+1)(0.5s+1)', ec: '5', pm: '40', wc: '', method: 'auto' },
+  { name: '滞后-超前 Kv=10 γ≥50°', num: '1', den: 's(s+1)(s+2)', ec: '10', pm: '50', wc: '', method: 'laglead' },
+  { name: '指定 ωc=165', num: '1', den: 's(0.1s+1)(0.001s+1)', ec: '1000', pm: '45', wc: '165', method: 'auto' },
+  { name: 'Ⅱ 型 Ka=10 γ≥35°', num: '1', den: 's^2(0.1s+1)', ec: '10', pm: '35', wc: '', method: 'auto' }
+]
+
+const DESIGN_METHODS = [
+  { key: 'auto', name: '自动' },
+  { key: 'lead', name: '超前' },
+  { key: 'lag', name: '滞后' },
+  { key: 'laglead', name: '滞后-超前' }
+]
+
+const METHOD_NAME = { none: '无需校正', lead: '串联超前校正', lag: '串联滞后校正', laglead: '串联滞后-超前校正' }
+
+// (αT·s + 1) 形式
+function tcFactor(tau) {
+  return '(' + F.fmt(tau) + 's + 1)'
+}
+
+function closedInfo(Lopen, tEnd) {
+  const T = ctl.feedback(Lopen)
+  const st = ctl.stability(ctl.poles(T))
+  const r = ctl.step(T, tEnd, 1001)
+  const info = st === 'stable' ? ctl.stepInfo(r.t, r.y, ctl.dcGain(T)) : null
+  return { T, st, r, info }
+}
+
+function analyzeDesign(input) {
+  const G0 = buildTF(input.num, input.den)
+  if (ctl.poles(G0).length === 0) throw new Error('被控对象分母至少为 1 阶')
+  const pm = parseNum(input.pm, '相角裕度要求', { positive: true })
+  if (pm >= 90) throw new Error('相角裕度要求应小于 90°')
+  const wcReq = parseNum(input.wc, '期望截止频率', { optional: true, positive: true })
+  const ec = parseNum(input.ec, '误差系数', { optional: true, positive: true })
+  const tg = D.typeAndGain(G0)
+  const ecName = ['Kp', 'Kv', 'Ka'][tg.nu] || 'K'
+  const steps = []
+  let K = 1
+  if (ec !== null) {
+    if (!(tg.k0 > 0) || !isFinite(tg.k0)) throw new Error('lim s→0 s^ν·G0(s) 不为正，无法按误差系数确定 K')
+    K = ec / tg.k0
+    steps.push('由稳态误差要求 ' + ecName + ' = ' + F.fmt(ec) + '：K = ' + ecName + ' / lim s→0 s' + (tg.nu ? '^' + tg.nu : '^0') + '·G0(s) = ' + F.fmt(ec) + ' / ' + F.fmt(tg.k0) + ' = ' + F.fmt(K))
+  } else steps.push('未给出误差系数要求，取 K = 1')
+  const L0 = ctl.makeTF(P.scale(G0.num, K), G0.den)
+  const r = D.design(L0, { pm, wc: wcReq, method: input.method || 'auto' })
+  const notes = []
+  const olp = ctl.poles(L0)
+  if (olp.some(p => p.re > 1e-9)) notes.push('开环含右半平面极点，基于相角裕度的设计不保证闭环稳定，请以下方闭环极点为准')
+  if (ctl.zeros(L0).some(z => z.re > 1e-9)) notes.push('对象为非最小相位系统，相位曲线与幅值不再一一对应，设计结果需仔细验算')
+
+  if (!r.Gc && r.method !== 'none') {
+    const why = r.tried.map(t => METHOD_NAME[t.method] + '：' + t.reason).join('；')
+    throw new Error('设计失败。' + (why || r.reason || ''))
+  }
+
+  const pm0 = r.mg0.pm
+  const gm0 = r.mg0.gm
+  if (pm0) steps.push('未校正系统：ωc0 = ' + F.fmt(pm0.w) + ' rad/s，γ0 = ' + F.fmt(pm0.pm) + '°' + (gm0 ? '，GM0 = ' + F.fmt(gm0.gm) + ' dB' : '') + '；要求 γ* ≥ ' + F.fmt(pm) + '°')
+
+  const sign = v => (v >= 0 ? '+ ' + F.fmt(v) : '− ' + F.fmt(-v))
+  let gcNum = '1'
+  let gcDen = '1'
+  if (r.method === 'lead') {
+    const d = r.lead
+    steps.push(
+      (wcReq ? '按指定值取 ωc = ωm = ' : '由 γ(ωc) = 180° + ∠G(jωc) + φm(ωc) = γ* 精确求得 ωc = ωm = ') + F.fmt(d.wc) + ' rad/s，此处 20lg|G(jωc)| = ' + F.fmt(d.magDb) + ' dB',
+      '由 −10lg a = ' + F.fmt(d.magDb) + ' dB 得 a = ' + F.fmt(d.a) + '，最大超前角 φm = arcsin((a−1)/(a+1)) = ' + F.fmt(d.phim) + '°',
+      'T = 1/(ωm√a) = ' + F.fmt(d.T) + ' s，aT = ' + F.fmt(d.a * d.T) + ' s',
+      '验算：γ = 180° ' + sign(d.ph) + '° + ' + F.fmt(d.phim) + '° = ' + F.fmt(d.pm) + '°'
+    )
+    gcNum = tcFactor(d.a * d.T)
+    gcDen = tcFactor(d.T)
+  } else if (r.method === 'lag') {
+    const d = r.lag
+    steps.push(
+      (wcReq ? '按指定值取 ωc = ' : '由 γ(ωc) = 180° + ∠G(jωc) + ∠Gc(jωc) = γ* 精确求得 ωc = ') + F.fmt(d.wc) + ' rad/s，∠G(jωc) = ' + F.fmt(d.ph) + '°，滞后环节在 ωc 处另有 ' + F.fmt(d.phLag) + '°',
+      '此处 20lg|G(jωc)| = ' + F.fmt(d.magDb) + ' dB；由 |G(jωc)·Gc(jωc)| = 1 精确解得 b = ' + F.fmt(d.b) + '（近似式 20lg b = −L(ωc) 给出 ' + F.fmt(Math.pow(10, -d.magDb / 20)) + '）',
+      '零点取在 1/(bT) = ωc/' + D.LAG_RATIO + ' = ' + F.fmt(d.wz) + ' rad/s，T = ' + F.fmt(d.T) + ' s，bT = ' + F.fmt(d.b * d.T) + ' s',
+      '验算：γ = 180° ' + sign(d.ph) + '° ' + sign(d.phLag) + '° = ' + F.fmt(d.pm) + '°'
+    )
+    gcNum = tcFactor(d.b * d.T)
+    gcDen = tcFactor(d.T)
+  } else if (r.method === 'laglead') {
+    const a = r.lead
+    const b = r.lag
+    steps.push(
+      '取校正后截止频率 ωc = ' + F.fmt(r.wc) + ' rad/s（' + (wcReq ? '指定值' : '未校正系统的相位穿越频率附近') + '），∠G(jωc) = ' + F.fmt(a.ph) + '°，20lg|G(jωc)| = ' + F.fmt(a.magDb) + ' dB',
+      '超前段：φm = γ* − (180° + ∠G) − ∠Gc2(jωc) = ' + F.fmt(a.phim) + '°，a = (1+sinφm)/(1−sinφm) = ' + F.fmt(a.a) + '，T1 = 1/(ωc√a) = ' + F.fmt(a.T) + ' s',
+      '滞后段：零点取 ωc/' + D.LAG_RATIO + ' = ' + F.fmt(b.wz) + ' rad/s，由 |G·Gc1·Gc2| = 1 得 b = ' + F.fmt(b.b) + '，T2 = ' + F.fmt(b.T) + ' s，在 ωc 处带来 ' + F.fmt(b.phLag) + '°',
+      '验算：γ = 180° ' + sign(a.ph) + '° + ' + F.fmt(a.phim) + '° ' + sign(b.phLag) + '° = ' + F.fmt(b.pm) + '°（超前角与滞后相位耦合，迭代求解）'
+    )
+    gcNum = tcFactor(a.a * a.T) + tcFactor(b.b * b.T)
+    gcDen = tcFactor(a.T) + tcFactor(b.T)
+  } else {
+    steps.push(r.reason)
+  }
+
+  const Lc = r.Lc || L0
+  const mg1 = ctl.margins(Lc, ctl.bode(Lc, null, null, 1600))
+  const ok = r.method === 'none' || (mg1.pm && mg1.pm.pm >= pm - 0.5)
+  if (r.Lc) steps.push('复核（完整 Bode 计算）：ωc = ' + (mg1.pm ? F.fmt(mg1.pm.w) + ' rad/s，γ = ' + F.fmt(mg1.pm.pm) + '°' : '无') + '，GM = ' + (mg1.gm ? F.fmt(mg1.gm.gm) + ' dB' : '∞') + (ok ? '，满足要求' : '，未满足要求'))
+  if (r.tried.length > 1) notes.push('自动选择过程：' + r.tried.map(t => METHOD_NAME[t.method] + (t.ok ? ' ✓' : ' ✗ ' + t.reason)).join('；'))
+  if (r.method === 'lead' && r.lead.a > 10) notes.push('a = ' + F.fmt(r.lead.a) + ' 较大，高频增益提高 ' + F.fmt(20 * Math.log10(r.lead.a)) + ' dB，抗噪能力变差')
+
+  // 时域对比
+  const c1 = closedInfo(Lc, null)
+  const tEnd = c1.st === 'stable' ? ctl.autoTime(c1.T) : 10
+  const before = closedInfo(L0, tEnd)
+  const after = closedInfo(Lc, tEnd)
+  const f = (info, key, unit, d) => (info && isFinite(info[key]) ? F.fmt(info[key], d) + unit : '—')
+  const rows = [
+    { label: '截止频率 ωc', a: pm0 ? F.fmt(pm0.w) : '—', b: mg1.pm ? F.fmt(mg1.pm.w) : '—' },
+    { label: '相角裕度 γ', a: pm0 ? F.fmt(pm0.pm) + '°' : '∞', b: mg1.pm ? F.fmt(mg1.pm.pm) + '°' : '∞' },
+    { label: '幅值裕度 GM', a: gm0 ? F.fmt(gm0.gm) + ' dB' : '∞', b: mg1.gm ? F.fmt(mg1.gm.gm) + ' dB' : '∞' },
+    { label: '闭环稳定性', a: STAB_TEXT[before.st], b: STAB_TEXT[after.st] },
+    { label: '超调量 σ%', a: f(before.info, 'overshoot', '%', 3), b: f(after.info, 'overshoot', '%', 3) },
+    { label: '上升时间 tr', a: f(before.info, 'riseTime', ' s'), b: f(after.info, 'riseTime', ' s') },
+    { label: '调节时间 ts', a: f(before.info, 'settlingTime', ' s'), b: f(after.info, 'settlingTime', ' s') }
+  ]
+  if (tg.nu > 0 && ec !== null) rows.push({ label: '误差系数 ' + ecName, a: F.fmt(ec), b: F.fmt(ec * ctl.dcGain(r.Gc || { num: [1], den: [1] })) })
+
+  // 频率特性对比
+  const rg0 = ctl.autoFreqRange(L0)
+  const rg1 = r.Gc ? ctl.autoFreqRange(r.Gc) : rg0
+  const wmin = Math.max(Math.min(rg0[0], rg1[0]), Math.max(rg0[1], rg1[1]) * 1e-10)
+  const wmax = Math.max(rg0[1], rg1[1])
+  const b0 = ctl.bode(L0, wmin, wmax, 700)
+  const b1 = ctl.bode(Lc, wmin, wmax, 700)
+  const bc = r.Gc ? ctl.bode(r.Gc, wmin, wmax, 700) : null
+  const magSeries = [{ x: b0.w, y: b0.mag, name: '校正前', color: '#9ca3af', dash: [5, 3] }]
+  const phSeries = [{ x: b0.w, y: b0.phase, name: '校正前', color: '#9ca3af', dash: [5, 3] }]
+  if (bc) {
+    magSeries.push({ x: bc.w, y: bc.mag, name: 'Gc', color: '#ea580c', width: 1.5 })
+    phSeries.push({ x: bc.w, y: bc.phase, name: 'Gc', color: '#ea580c', width: 1.5 })
+  }
+  magSeries.push({ x: b1.w, y: b1.mag, name: '校正后', color: '#2563eb' })
+  phSeries.push({ x: b1.w, y: b1.phase, name: '校正后', color: '#2563eb' })
+  const vl = []
+  if (pm0) vl.push({ x: pm0.w, color: '#9ca3af' })
+  if (mg1.pm) vl.push({ x: mg1.pm.w, color: '#16a34a' })
+  const phRef = [{ y: -180, color: '#dc2626' }, { y: -180 + pm, color: '#16a34a', dash: [2, 3] }]
+
+  const yClamp = after.st === 'stable' ? null : [-1, 3]
+  return {
+    method: METHOD_NAME[r.method],
+    ok,
+    K: F.fmt(K),
+    ecName,
+    nu: tg.nu,
+    gc: { num: gcNum, den: gcDen },
+    open: tfText(Lc),
+    steps,
+    rows,
+    notes,
+    chartMag: {
+      title: '开环幅频特性 L(ω) / dB',
+      xLog: true,
+      xName: 'ω',
+      xLabel: '频率 ω / (rad/s)',
+      series: magSeries,
+      hLines: [{ y: 0, color: '#6b7280' }],
+      vLines: vl,
+      yClamp: [-200, 200],
+      legendBottom: true,
+      cursorEnabled: true
+    },
+    chartPhase: {
+      title: '开环相频特性 φ(ω) / (°)',
+      xLog: true,
+      xName: 'ω',
+      xLabel: '频率 ω / (rad/s)',
+      series: phSeries,
+      hLines: phRef,
+      vLines: vl,
+      legend: false,
+      cursorEnabled: true
+    },
+    chartStep: {
+      title: '单位负反馈闭环阶跃响应',
+      xLabel: '时间 t / s',
+      xName: 't',
+      series: [
+        // 校正前不稳定时发散曲线会盖住校正后的响应，只在稳定时画出
+        before.st === 'stable' ? { x: before.r.t, y: before.r.y, name: '校正前', color: '#9ca3af', dash: [5, 3] } : null,
+        { x: after.r.t, y: after.r.y, name: before.st === 'stable' ? '校正后' : '校正后（校正前闭环' + STAB_TEXT[before.st] + '）', color: '#2563eb' },
+        { x: [0, tEnd], y: [1, 1], color: '#d1d5db', width: 1, dash: [4, 3], cursor: false }
+      ].filter(Boolean),
+      bands: [{ y0: 0.98, y1: 1.02, color: 'rgba(22,163,74,0.10)' }],
+      yIncludeZero: true,
+      yClamp,
+      legendBottom: true,
+      cursorEnabled: true
+    }
+  }
+}
+
+// ---------------- 状态空间 ----------------
+
+const SS_PRESETS = [
+  { name: '二阶', A: '0 1; -2 -3', B: '0; 1', C: '1 0', D: '0', poles: '-2±2j', obs: '-8, -9', x0: '0.5 0' },
+  { name: '倒立摆小车', A: '0 1 0 0; 20.601 0 0 0; 0 0 0 1; -0.4905 0 0 0', B: '0; -1; 0; 0.5', C: '0 0 1 0', D: '0', poles: '-2±3.464j, -10, -10', obs: '-6±6j, -12, -14', x0: '0.1 0 0 0' },
+  { name: '三阶标准型', A: '0 1 0; 0 0 1; -6 -11 -6', B: '0; 0; 1', C: '10 1 0', D: '0', poles: '-2±2j, -10', obs: '-15, -16, -17', x0: '0.2 0 0' },
+  { name: '含不能控模态', A: '-1 0; 0 -2', B: '1; 0', C: '1 1', D: '0', poles: '', obs: '-6, -7', x0: '1 1' },
+  { name: '含不能观模态', A: '0 1; -2 -3', B: '0; 1', C: '1 1', D: '0', poles: '-3±3j', obs: '', x0: '' }
+]
+
+function vecStr(v) {
+  return '[ ' + v.map(x => F.fmt(clean(x), 5)).join(',  ') + ' ]'
+}
+
+function matRows(M) {
+  return M.map(r => r.map(v => F.fmt(clean(v), 4)))
+}
+
+function analyzeSS(input) {
+  const A = S.parseMatrix(input.A, '矩阵 A')
+  const n = A.length
+  if (A[0].length !== n) throw new Error('A 必须是方阵（当前 ' + n + '×' + A[0].length + '）')
+  if (n > 8) throw new Error('阶数最多支持 8')
+  const B = S.parseVector(input.B, '输入矩阵 B', n)
+  const Cv = S.parseVector(input.C, '输出矩阵 C', n)
+  const Dv = parseNum(input.D === '' || input.D === undefined ? '0' : input.D, '直通 D')
+  const sys = { A, B, C: Cv, D: Dv }
+  const lev = S.leverrier(A)
+  const eigs = P.roots(lev.charPoly)
+  const st = ctl.stability(eigs)
+  const tf = S.ssToTF(sys)
+  const Qc = S.ctrbMatrix(A, B)
+  const Qo = S.obsvMatrix(A, Cv)
+  const rc = S.rank(Qc)
+  const ro = S.rank(Qo)
+  const modes = S.pbh(A, B, Cv, eigs)
+  const notes = []
+  if (rc < n && modes.uncontrollable.length) notes.push('PBH 检验：特征值 ' + F.rootsStr(modes.uncontrollable) + ' 对应的模态不能控，状态反馈无法改变它')
+  if (ro < n && modes.unobservable.length) notes.push('PBH 检验：特征值 ' + F.rootsStr(modes.unobservable) + ' 对应的模态不能观，不会出现在输出中')
+  if (rc < n || ro < n) notes.push('传递函数中出现零极点对消，G(s) 的阶数低于状态维数 ' + n)
+
+  // 极点配置
+  let K = null
+  let Nr = 1
+  let Acl = null
+  if (input.poles && String(input.poles).trim()) {
+    if (rc < n) notes.push('系统不完全能控，不能任意配置极点')
+    else {
+      const ps = S.parsePoles(input.poles, '期望闭环极点', n)
+      K = S.acker(A, B, ps)
+      Acl = A.map((r, i) => r.map((v, j) => v - B[i] * K[j]))
+      const Ccl = Cv.map((v, j) => v - Dv * K[j])
+      try {
+        const g = dot(Ccl, S.solve(Acl.map(r => r.map(v => -v)), B)) + Dv
+        if (Math.abs(g) > 1e-12) Nr = 1 / g
+        else notes.push('闭环直流增益为 0（含原点零点），无法用前馈增益 Nr 实现无静差跟踪')
+      } catch (e) {
+        notes.push('闭环含原点极点，取 Nr = 1')
+      }
+    }
+  }
+  // 观测器
+  let Lg = null
+  if (input.obs && String(input.obs).trim()) {
+    if (ro < n) notes.push('系统不完全能观，不能任意配置观测器极点')
+    else Lg = S.observerGain(A, Cv, S.parsePoles(input.obs, '观测器极点', n))
+  }
+  const x0 = input.x0 && String(input.x0).trim() ? S.parseVector(input.x0, '初始状态 x(0)', n) : new Array(n).fill(0)
+
+  // 仿真时长：由所有相关极点决定
+  const allPoles = (Acl ? S.eig(Acl) : eigs).concat(Lg ? S.eig(A.map((r, i) => r.map((v, j) => v - Lg[i] * Cv[j]))) : [])
+  const tEnd = parseNum(input.tEnd, '仿真时长', { optional: true, positive: true }) || ctl.autoTime({ num: [1], den: P.fromRoots(allPoles) })
+  const N = 801
+  const dt = tEnd / (N - 1)
+  const t = ctl.linspace(0, tEnd, N)
+  const u1 = new Array(N).fill(1)
+  const ySeries = []
+  const eSeries = []
+  if (!K) {
+    const r = S.simulate(sys, u1, dt, x0)
+    ySeries.push({ x: t, y: r.y, name: '开环 y（u = 1）', color: '#2563eb' })
+  } else {
+    const Ccl = Cv.map((v, j) => v - Dv * K[j])
+    const ideal = S.simulate({ A: Acl, B: B.map(v => v * Nr), C: Ccl, D: Dv * Nr }, u1, dt, x0)
+    if (st === 'stable') ySeries.push({ x: t, y: S.simulate(sys, u1, dt, x0).y, name: '开环', color: '#9ca3af', dash: [5, 3] })
+    ySeries.push({ x: t, y: ideal.y, name: Lg ? '状态反馈（真实状态）' : '状态反馈', color: Lg ? '#16a34a' : '#2563eb', dash: Lg ? [6, 3] : [] })
+    if (Lg) {
+      // z = [x; e]，e = x − x̂，观测器初值 x̂(0) = 0
+      const Az = []
+      for (let i = 0; i < n; i++) Az.push(Acl[i].concat(K.map(k => B[i] * k)))
+      for (let i = 0; i < n; i++) Az.push(new Array(n).fill(0).concat(A[i].map((v, j) => v - Lg[i] * Cv[j])))
+      const zsys = { A: Az, B: B.map(v => v * Nr).concat(new Array(n).fill(0)), C: Ccl.concat(K.map(k => Dv * k)), D: Dv * Nr }
+      const zr = S.simulate(zsys, u1, dt, x0.concat(x0))
+      ySeries.push({ x: t, y: zr.y, name: '观测器 + 状态反馈', color: '#2563eb' })
+      for (let i = 0; i < n; i++) eSeries.push({ x: t, y: zr.x.map(z => z[n + i]), name: 'e' + (i + 1), color: ['#2563eb', '#ea580c', '#16a34a', '#9333ea', '#dc2626', '#0891b2', '#ca8a04', '#db2777'][i] })
+    }
+    ySeries.push({ x: [0, tEnd], y: [1, 1], color: '#d1d5db', width: 1, dash: [4, 3], cursor: false })
+  }
+  if (Lg && !K) {
+    // 只有观测器：开环运行，看估计误差收敛
+    const Ae = A.map((r, i) => r.map((v, j) => v - Lg[i] * Cv[j]))
+    const er = S.simulate({ A: Ae, B: new Array(n).fill(0), C: new Array(n).fill(0), D: 0 }, u1, dt, x0)
+    for (let i = 0; i < n; i++) eSeries.push({ x: t, y: er.x.map(z => z[i]), name: 'e' + (i + 1), color: ['#2563eb', '#ea580c', '#16a34a', '#9333ea', '#dc2626', '#0891b2', '#ca8a04', '#db2777'][i] })
+  }
+  if (Lg && x0.every(v => v === 0)) notes.push('x(0) = x̂(0) = 0 时估计误差恒为 0；给出非零初始状态可观察观测器收敛过程')
+
+  const unstableY = (K ? ctl.stability(S.eig(Acl)) : st) !== 'stable'
+  return {
+    n,
+    eigs: F.rootsStr(eigs),
+    stability: STAB_TEXT[st],
+    stabilityClass: STAB_CLASS[st],
+    charPoly: F.polyStr(lev.charPoly.map(clean)),
+    tf: tfText({ num: P.trim(tf.num.map(clean)), den: tf.den }),
+    tfMin: rc < n || ro < n ? tfText(cancelCommon(tf)) : null,
+    ctrb: { rank: rc, ok: rc === n, rows: matRows(Qc) },
+    obsv: { rank: ro, ok: ro === n, rows: matRows(Qo) },
+    K: K ? vecStr(K) : '',
+    Nr: K ? F.fmt(Nr, 5) : '',
+    clPoles: Acl ? F.rootsStr(S.eig(Acl)) : '',
+    L: Lg ? vecStr(Lg) : '',
+    obsPoles: Lg ? F.rootsStr(S.eig(A.map((r, i) => r.map((v, j) => v - Lg[i] * Cv[j])))) : '',
+    notes,
+    chartY: {
+      title: K ? '闭环阶跃响应 y(t)（u = −Kx̂ + Nr·r）' : '开环阶跃响应 y(t)',
+      xLabel: '时间 t / s',
+      xName: 't',
+      series: ySeries,
+      yIncludeZero: true,
+      yClamp: unstableY ? [-1e3, 1e3] : null,
+      legendBottom: true,
+      cursorEnabled: true
+    },
+    chartE: eSeries.length
+      ? {
+          title: '状态估计误差 e = x − x̂',
+          xLabel: '时间 t / s',
+          xName: 't',
+          series: eSeries,
+          hLines: [{ y: 0, color: '#9ca3af' }],
+          legendBottom: true,
+          cursorEnabled: true
+        }
+      : null
+  }
+}
+
+function dot(a, b) {
+  return a.reduce((s, v, i) => s + v * b[i], 0)
+}
+
+// 数值约去分子分母的公共根（得到最小实现的传递函数）
+function cancelCommon(G) {
+  const num = P.trim(G.num)
+  if (P.isZero(num)) return { num: [0], den: [1] }
+  const zs = P.roots(num)
+  const ps = P.roots(G.den)
+  const keepZ = []
+  zs.forEach(z => {
+    const i = ps.findIndex(p => C.abs(C.sub(p, z)) < 1e-6 * Math.max(1, C.abs(z)))
+    if (i >= 0) ps.splice(i, 1)
+    else keepZ.push(z)
+  })
+  const n = P.scale(P.fromRoots(keepZ), num[0])
+  return { num: n.map(clean), den: P.fromRoots(ps).map(clean) }
+}
+
 module.exports = {
   TF_PRESETS,
   PID_PRESETS,
@@ -599,5 +969,10 @@ module.exports = {
   analyzeRlocus,
   rlocusAtK,
   analyzeRouth,
-  analyzeSecond
+  analyzeSecond,
+  DESIGN_PRESETS,
+  DESIGN_METHODS,
+  analyzeDesign,
+  SS_PRESETS,
+  analyzeSS
 }
